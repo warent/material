@@ -53,7 +53,7 @@ angular.module('toastDemo1', ['ngMaterial'])
     var toast = $mdToast.simple()
           .textContent('Action Toast!')
           .action('OK')
-          .highlightAction(false)
+          .highlightAction(true)
           .position($scope.getToastPosition());
 
     $mdToast.show(toast).then(function(response) {

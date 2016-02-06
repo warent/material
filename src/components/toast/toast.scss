@@ -105,17 +105,14 @@ md-toast {
     }
   }
 
-  .md-action {
-    line-height: 19px;
-    margin-left: 24px;
-    margin-right: 0;
-    cursor: pointer;
+  .md-button {
     text-transform: uppercase;
-    float: right;
-
-    &.md-button {
-      min-width: 0;
-    }
+    @include rtl(margin-right, 0, inherit);
+    @include rtl(margin-left, inherit, 0);
+    @include rtl(float, right, left);
+    @include rtl(left, 6px, 0);
+    @include rtl(right, 0, 6px);
+    min-width: 0;
   }
 }
 
