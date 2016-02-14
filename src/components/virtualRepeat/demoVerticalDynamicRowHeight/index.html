@@ -1,0 +1,15 @@
+<div ng-controller="AppCtrl as ctrl" ng-cloak>
+  <md-content layout="column">
+    <p>
+       Display 1000 item in a virtual-list with viewport to capture row height; dynamically adjusted.
+    </p>
+
+    <md-virtual-repeat-container md-dynamic-height id="vertical-container">
+      <div md-virtual-repeat="item in ctrl.items"
+          class="repeated-item" flex>
+        {{item}}
+      </div>
+    </md-virtual-repeat-container>
+  </md-content>
+
+</div>
