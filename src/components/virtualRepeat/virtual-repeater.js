@@ -55,7 +55,6 @@ function VirtualRepeatContainerDirective() {
 
 function virtualRepeatContainerTemplate($element) {
   return '<div class="md-virtual-repeat-scroller">' +
-    '<div class="md-virtual-repeat-spring"></div>' +
     '<div class="md-virtual-repeat-sizer"></div>' +
     '<div class="md-virtual-repeat-offsetter">' +
       $element[0].innerHTML +
@@ -813,6 +812,7 @@ VirtualRepeatController.prototype.updateScope_ = function(scope, index) {
  * @private
  */
 VirtualRepeatController.prototype.poolBlock_ = function(index) {
+  console.log(this.blocks[index].element[0].offsetHeight);
   this.pooledBlocks.push(this.blocks[index]);
   this.parentNode.removeChild(this.blocks[index].element[0]);
   delete this.blocks[index];

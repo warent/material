@@ -7,7 +7,7 @@
     <md-virtual-repeat-container md-dynamic-height id="vertical-container">
       <div md-virtual-repeat="item in ctrl.items"
           class="repeated-item" flex>
-        {{item}}
+        {{$index}}: {{item}}
       </div>
     </md-virtual-repeat-container>
   </md-content>
