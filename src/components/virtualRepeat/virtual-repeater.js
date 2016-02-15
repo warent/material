@@ -106,6 +106,8 @@ function VirtualRepeatContainerController(
   this.offsetSize = parseInt(this.$attrs.mdOffsetSize, 10) || 0;
   /** @type {?string} height or width element style on the container prior to auto-shrinking. */
   this.oldElementSize = null;
+  /** @type {Object<number, number> Cached block heights */
+  this.cachedBlockHeights = {};
 
   if (this.$attrs.mdTopIndex) {
     /** @type {function(angular.Scope): number} Binds to topIndex on Angular scope */
@@ -343,6 +345,25 @@ VirtualRepeatContainerController.prototype.resetScroll = function() {
   this.scrollTo(0);
 };
 
+VirtualRepeatContainerController.prototype.getCalculatedCachedHeights = function() {
+  var combinedCachedHeights = 0;
+  for (var cachedHeightIndex in this.cachedBlockHeights) {
+    combinedCachedHeights += this.cachedBlockHeights[cachedHeightIndex];
+  }
+  return combinedCachedHeights;
+}
+
+VirtualRepeatContainerController.prototype.adjustOffset_ = function() {
+  var offset = this.isHorizontal() ? this.scroller.scrollLeft : this.scroller.scrollTop;
+  var heightTransform = this.getCalculatedCachedHeights();
+  var transform = (this.isHorizontal() ? 'translateX(' : 'translateY(') +
+                  heightTransform.toString() + 'px)';
+
+  this.scrollOffset = offset;
+  this.offsetter.style.webkitTransform = transform;
+  this.offsetter.style.transform = transform;
+
+}
 
 VirtualRepeatContainerController.prototype.handleScroll_ = function() {
   var offset = this.isHorizontal() ? this.scroller.scrollLeft : this.scroller.scrollTop;
@@ -351,14 +372,7 @@ VirtualRepeatContainerController.prototype.handleScroll_ = function() {
   var itemSize = this.repeater.getItemSize();
   if (!itemSize) return;
 
-  var numItems = Math.max(0, Math.floor(offset / itemSize) - NUM_EXTRA);
-
-  var transform = (this.isHorizontal() ? 'translateX(' : 'translateY(') +
-                  (numItems * itemSize) + 'px)';
-
-  this.scrollOffset = offset;
-  this.offsetter.style.webkitTransform = transform;
-  this.offsetter.style.transform = transform;
+  this.adjustOffset_();
 
   if (this.bindTopIndex) {
     var topIndex = Math.floor(offset / itemSize);
@@ -487,12 +501,13 @@ function VirtualRepeatController($scope, $element, $attrs, $browser, $document, 
   this.unwatchItemSize_ = angular.noop;
 
   /**
-   * Presently rendered blocks by repeat index.
-   * @type {Object<number, !VirtualRepeatController.Block}
+   * @type {Object<number, !VirtualRepeatController.Block} Presently rendered blocks by repeat index.
    */
   this.blocks = {};
+
   /** @type {Array<!VirtualRepeatController.Block>} A pool of presently unused blocks. */
   this.pooledBlocks = [];
+
 }
 
 
@@ -579,18 +594,23 @@ VirtualRepeatController.prototype.repeatListExpression_ = function(scope) {
  */
 VirtualRepeatController.prototype.containerUpdated = function() {
   // If itemSize is unknown, attempt to measure it.
-  if (!this.itemSize) {
-    this.unwatchItemSize_ = this.$scope.$watchCollection(
-        this.repeatListExpression,
-        angular.bind(this, function(items) {
-          if (items && items.length) {
-            this.$$rAF(angular.bind(this, this.readItemSize_));
-          }
-        }));
-    if (!this.$rootScope.$$phase) this.$scope.$digest();
+  if (!Object.keys(this.blocks).length) {
+    if (!this.itemSize) {
+      this.unwatchItemSize_ = this.$scope.$watchCollection(
+          this.repeatListExpression,
+          angular.bind(this, function(items) {
+            if (items && items.length) {
+              this.$$rAF(angular.bind(this, this.readItemSize_));
+            }
+          }));
+      if (!this.$rootScope.$$phase) this.$scope.$digest();
 
-    return;
-  } else if (!this.sized) {
+      return;
+    }
+  } else {
+    this.itemSize = this.blocks[this.startIndex].element[0].offsetHeight;
+  }
+  if (this.itemSize && !this.sized) {
     this.items = this.repeatListExpression(this.$scope);
   }
 
@@ -682,9 +702,12 @@ VirtualRepeatController.prototype.virtualRepeatUpdate_ = function(items, oldItem
   Object.keys(this.blocks).forEach(function(blockIndex) {
     var index = parseInt(blockIndex, 10);
     if (index < this.newStartIndex || index >= this.newEndIndex) {
+      if (index < this.newStartIndex) this.container.cachedBlockHeights[blockIndex] = this.blocks[blockIndex].element[0].offsetHeight;
       this.poolBlock_(index);
     }
   }, this);
+
+  this.container.adjustOffset_();
 
   // Add needed blocks.
   // For performance reasons, temporarily block browser url checks as we digest
@@ -812,7 +835,6 @@ VirtualRepeatController.prototype.updateScope_ = function(scope, index) {
  * @private
  */
 VirtualRepeatController.prototype.poolBlock_ = function(index) {
-  console.log(this.blocks[index].element[0].offsetHeight);
   this.pooledBlocks.push(this.blocks[index]);
   this.parentNode.removeChild(this.blocks[index].element[0]);
   delete this.blocks[index];
@@ -843,12 +865,33 @@ VirtualRepeatController.prototype.updateIndexes_ = function() {
   var itemsLength = this.items ? this.items.length : 0;
   var containerLength = Math.ceil(this.container.getSize() / this.itemSize);
 
-  this.newStartIndex = Math.max(0, Math.min(
-      itemsLength - containerLength,
-      Math.floor(this.container.getScrollOffset() / this.itemSize)));
+  this.newStartIndex = Object.keys(this.container.cachedBlockHeights).length;
+  var heightTransform = this.container.getCalculatedCachedHeights();
+  var _scrollOffset = this.container.scrollOffset;
+
+  if (Object.keys(this.blocks).length) {
+    while (this.blocks[this.newStartIndex].element[0].offsetTop + heightTransform > _scrollOffset) {
+      this.newStartIndex--;
+      console.log(this.newStartIndex, this.blocks[this.newStartIndex+1].element[0].offsetTop, _scrollOffset);
+      var block = this.getBlock_(this.newStartIndex);
+      this.updateBlock_(block, this.newStartIndex);
+      this.parentNode.insertBefore(
+          this.domFragmentFromBlocks_([block]),
+          this.$element[0].nextSibling);
+      delete this.container.cachedBlockHeights[this.newStartIndex];
+      heightTransform = this.container.getCalculatedCachedHeights();
+      this.container.adjustOffset_();
+    }
+  }
+
+  Object.keys(this.blocks).forEach(function(index) {
+    if (index < this.newStartIndex) return;
+    if (this.blocks[index].element[0].offsetTop + this.blocks[index].element[0].offsetHeight + heightTransform < _scrollOffset) this.newStartIndex++;
+  }, this);
+
+
   this.newVisibleEnd = this.newStartIndex + containerLength + NUM_EXTRA;
   this.newEndIndex = Math.min(itemsLength, this.newVisibleEnd);
-  this.newStartIndex = Math.max(0, this.newStartIndex - NUM_EXTRA);
 };
 
 /**
