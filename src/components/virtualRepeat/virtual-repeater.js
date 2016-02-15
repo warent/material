@@ -881,7 +881,6 @@ VirtualRepeatController.prototype.updateIndexes_ = function() {
   if (Object.keys(this.blocks).length) {
     while (this.blocks[this.newStartIndex].element[0][this.offsetLocString_()] + sizeTransform > _scrollOffset) {
       this.newStartIndex--;
-      console.log(this.newStartIndex, this.blocks[this.newStartIndex+1].element[0][this.offsetLocString_()], _scrollOffset);
       var block = this.getBlock_(this.newStartIndex);
       this.updateBlock_(block, this.newStartIndex);
       this.parentNode.insertBefore(
@@ -899,22 +898,41 @@ VirtualRepeatController.prototype.updateIndexes_ = function() {
         this.$element[0].nextSibling);
   }
 
+  // Apply corrections to sever blocks that are outside of the view
   Object.keys(this.blocks).forEach(function(index) {
     if (index < this.newStartIndex) return;
-    if (this.blocks[index].element[0][this.offsetLocString_()] + this.blocks[index].element[0][this.offsetSizeString_()] + sizeTransform < _scrollOffset) this.newStartIndex++;
-    if (this.blocks[index].element[0][this.offsetLocString_()] > containerLength) this.newEndIndex--;
+    // Check to see if a block has gone outside the top of the boundaries
+    if (this.blocks[index].element[0][this.offsetLocString_()] + this.blocks[index].element[0][this.offsetSizeString_()] + sizeTransform < _scrollOffset) {
+      this.newStartIndex++;
+    }
+    //Check to see if a block has gone beneath the boundaries
+    else if (this.blocks[index].element[0][this.offsetLocString_()] + sizeTransform - _scrollOffset > containerLength) {
+      this.newEndIndex--;
+    }
   }, this);
+
 
   this.newEndIndex = this.newEndIndex || 0;
 
-  while (this.blocks[this.newEndIndex] && this.blocks[this.newEndIndex].element[0][this.offsetLocString_()] < containerLength) {
-    this.newEndIndex++;
-    var block = this.getBlock_(this.newEndIndex);
-    this.updateBlock_(block, this.newEndIndex);
-    this.parentNode.insertBefore(
-        this.domFragmentFromBlocks_([block]),
-        this.blocks[this.newEndIndex-1] && this.blocks[this.newEndIndex-1].element[0].nextSibling);
+  while (true) {
+    if (!this.blocks[this.newEndIndex]) {
+      this.newEndIndex--;
+    }
+    var blockBottomRight = this.blocks[this.newEndIndex].element[0][this.offsetLocString_()] + this.blocks[this.newEndIndex].element[0][this.offsetSizeString_()];
+    var transforms = sizeTransform - _scrollOffset;
+    if (blockBottomRight + transforms < containerLength) {
+      this.newEndIndex++;
+      var block = this.getBlock_(this.newEndIndex);
+      this.updateBlock_(block, this.newEndIndex);
+      this.parentNode.insertBefore(
+          this.domFragmentFromBlocks_([block]),
+          null);
+    } else {
+      this.newEndIndex++;
+      break;
+    }
   }
+
 
   this.newVisibleEnd = this.newStartIndex + containerLength + NUM_EXTRA;
 };
