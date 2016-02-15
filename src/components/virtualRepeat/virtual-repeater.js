@@ -902,22 +902,18 @@ VirtualRepeatController.prototype.updateIndexes_ = function() {
   Object.keys(this.blocks).forEach(function(index) {
     if (index < this.newStartIndex) return;
     if (this.blocks[index].element[0][this.offsetLocString_()] + this.blocks[index].element[0][this.offsetSizeString_()] + sizeTransform < _scrollOffset) this.newStartIndex++;
+    if (this.blocks[index].element[0][this.offsetLocString_()] > containerLength) this.newEndIndex--;
   }, this);
 
   this.newEndIndex = this.newEndIndex || 0;
 
-  if (Object.keys(this.blocks).length) {
-    var aggregatedLengths = 0;
-    while (aggregatedLengths < containerLength * 2.5) {
-      if (!this.blocks[this.newEndIndex]) break;
-      aggregatedLengths += this.blocks[this.newEndIndex].element[0][this.offsetSizeString_()];
-      this.newEndIndex++;
-      var block = this.getBlock_(this.newEndIndex);
-      this.updateBlock_(block, this.newEndIndex);
-      this.parentNode.insertBefore(
-          this.domFragmentFromBlocks_([block]),
-          this.blocks[this.newEndIndex-1] && this.blocks[this.newEndIndex-1].element[0].nextSibling);
-    }
+  while (this.blocks[this.newEndIndex] && this.blocks[this.newEndIndex].element[0][this.offsetLocString_()] < containerLength) {
+    this.newEndIndex++;
+    var block = this.getBlock_(this.newEndIndex);
+    this.updateBlock_(block, this.newEndIndex);
+    this.parentNode.insertBefore(
+        this.domFragmentFromBlocks_([block]),
+        this.blocks[this.newEndIndex-1] && this.blocks[this.newEndIndex-1].element[0].nextSibling);
   }
 
   this.newVisibleEnd = this.newStartIndex + containerLength + NUM_EXTRA;
