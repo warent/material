@@ -107,7 +107,7 @@ function VirtualRepeatContainerController(
   /** @type {?string} height or width element style on the container prior to auto-shrinking. */
   this.oldElementSize = null;
   /** @type {Object<number, number> Cached block heights */
-  this.cachedBlockHeights = {};
+  this.cachedBlockSizes = {};
 
   if (this.$attrs.mdTopIndex) {
     /** @type {function(angular.Scope): number} Binds to topIndex on Angular scope */
@@ -345,19 +345,19 @@ VirtualRepeatContainerController.prototype.resetScroll = function() {
   this.scrollTo(0);
 };
 
-VirtualRepeatContainerController.prototype.getCalculatedCachedHeights = function() {
-  var combinedCachedHeights = 0;
-  for (var cachedHeightIndex in this.cachedBlockHeights) {
-    combinedCachedHeights += this.cachedBlockHeights[cachedHeightIndex];
+VirtualRepeatContainerController.prototype.getCalculatedCachedSizes = function() {
+  var combinedCachedSizes = 0;
+  for (var cachedSizeIndex in this.cachedBlockSizes) {
+    combinedCachedSizes += this.cachedBlockSizes[cachedSizeIndex];
   }
-  return combinedCachedHeights;
+  return combinedCachedSizes;
 }
 
 VirtualRepeatContainerController.prototype.adjustOffset_ = function() {
   var offset = this.isHorizontal() ? this.scroller.scrollLeft : this.scroller.scrollTop;
-  var heightTransform = this.getCalculatedCachedHeights();
+  var sizeTransform = this.getCalculatedCachedSizes();
   var transform = (this.isHorizontal() ? 'translateX(' : 'translateY(') +
-                  heightTransform.toString() + 'px)';
+                  sizeTransform.toString() + 'px)';
 
   this.scrollOffset = offset;
   this.offsetter.style.webkitTransform = transform;
@@ -608,7 +608,7 @@ VirtualRepeatController.prototype.containerUpdated = function() {
       return;
     }
   } else {
-    this.itemSize = this.blocks[this.startIndex].element[0].offsetHeight;
+    this.itemSize = this.blocks[this.startIndex].element[0][this.offsetSizeString_()];
   }
   if (this.itemSize && !this.sized) {
     this.items = this.repeatListExpression(this.$scope);
@@ -702,7 +702,7 @@ VirtualRepeatController.prototype.virtualRepeatUpdate_ = function(items, oldItem
   Object.keys(this.blocks).forEach(function(blockIndex) {
     var index = parseInt(blockIndex, 10);
     if (index < this.newStartIndex || index >= this.newEndIndex) {
-      if (index < this.newStartIndex) this.container.cachedBlockHeights[blockIndex] = this.blocks[blockIndex].element[0].offsetHeight;
+      if (index < this.newStartIndex) this.container.cachedBlockSizes[blockIndex] = this.blocks[blockIndex].element[0][this.offsetSizeString_()];
       this.poolBlock_(index);
     }
   }, this);
@@ -857,41 +857,70 @@ VirtualRepeatController.prototype.domFragmentFromBlocks_ = function(blocks) {
 };
 
 
+VirtualRepeatController.prototype.offsetLocString_ = function() {
+  return this.container.isHorizontal() ? 'offsetLeft' : 'offsetTop';
+}
+
+VirtualRepeatController.prototype.offsetSizeString_ = function() {
+  return this.container.isHorizontal() ? 'offsetWidth' : 'offsetHeight';
+}
+
+
 /**
  * Updates start and end indexes based on length of repeated items and container size.
  * @private
  */
 VirtualRepeatController.prototype.updateIndexes_ = function() {
   var itemsLength = this.items ? this.items.length : 0;
-  var containerLength = Math.ceil(this.container.getSize() / this.itemSize);
+  var containerLength = this.container.getSize();
 
-  this.newStartIndex = Object.keys(this.container.cachedBlockHeights).length;
-  var heightTransform = this.container.getCalculatedCachedHeights();
+  this.newStartIndex = Object.keys(this.container.cachedBlockSizes).length;
+  var sizeTransform = this.container.getCalculatedCachedSizes();
   var _scrollOffset = this.container.scrollOffset;
 
   if (Object.keys(this.blocks).length) {
-    while (this.blocks[this.newStartIndex].element[0].offsetTop + heightTransform > _scrollOffset) {
+    while (this.blocks[this.newStartIndex].element[0][this.offsetLocString_()] + sizeTransform > _scrollOffset) {
       this.newStartIndex--;
-      console.log(this.newStartIndex, this.blocks[this.newStartIndex+1].element[0].offsetTop, _scrollOffset);
+      console.log(this.newStartIndex, this.blocks[this.newStartIndex+1].element[0][this.offsetLocString_()], _scrollOffset);
       var block = this.getBlock_(this.newStartIndex);
       this.updateBlock_(block, this.newStartIndex);
       this.parentNode.insertBefore(
           this.domFragmentFromBlocks_([block]),
           this.$element[0].nextSibling);
-      delete this.container.cachedBlockHeights[this.newStartIndex];
-      heightTransform = this.container.getCalculatedCachedHeights();
+      delete this.container.cachedBlockSizes[this.newStartIndex];
+      sizeTransform = this.container.getCalculatedCachedSizes();
       this.container.adjustOffset_();
     }
+  } else {
+    var block = this.getBlock_(this.newStartIndex);
+    this.updateBlock_(block, this.newStartIndex);
+    this.parentNode.insertBefore(
+        this.domFragmentFromBlocks_([block]),
+        this.$element[0].nextSibling);
   }
 
   Object.keys(this.blocks).forEach(function(index) {
     if (index < this.newStartIndex) return;
-    if (this.blocks[index].element[0].offsetTop + this.blocks[index].element[0].offsetHeight + heightTransform < _scrollOffset) this.newStartIndex++;
+    if (this.blocks[index].element[0][this.offsetLocString_()] + this.blocks[index].element[0][this.offsetSizeString_()] + sizeTransform < _scrollOffset) this.newStartIndex++;
   }, this);
 
+  this.newEndIndex = this.newEndIndex || 0;
+
+  if (Object.keys(this.blocks).length) {
+    var aggregatedLengths = 0;
+    while (aggregatedLengths < containerLength * 2.5) {
+      if (!this.blocks[this.newEndIndex]) break;
+      aggregatedLengths += this.blocks[this.newEndIndex].element[0][this.offsetSizeString_()];
+      this.newEndIndex++;
+      var block = this.getBlock_(this.newEndIndex);
+      this.updateBlock_(block, this.newEndIndex);
+      this.parentNode.insertBefore(
+          this.domFragmentFromBlocks_([block]),
+          this.blocks[this.newEndIndex-1] && this.blocks[this.newEndIndex-1].element[0].nextSibling);
+    }
+  }
 
   this.newVisibleEnd = this.newStartIndex + containerLength + NUM_EXTRA;
-  this.newEndIndex = Math.min(itemsLength, this.newVisibleEnd);
 };
 
 /**
