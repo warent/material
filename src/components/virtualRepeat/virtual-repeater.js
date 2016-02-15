@@ -78,6 +78,8 @@ var MAX_ELEMENT_SIZE = 1533917;
  */
 var NUM_EXTRA = 3;
 
+var CONTENT_BUFFER = 2;
+
 /** @ngInject */
 function VirtualRepeatContainerController(
     $$rAF, $mdUtil, $parse, $rootScope, $window, $scope, $element, $attrs) {
@@ -686,10 +688,6 @@ VirtualRepeatController.prototype.virtualRepeatUpdate_ = function(items, oldItem
 
   this.parentNode = this.$element[0].parentNode;
 
-  if (lengthChanged) {
-    this.container.setScrollSize(itemsLength * this.itemSize);
-  }
-
   if (this.isFirstRender) {
     this.isFirstRender = false;
     var startIndex = this.$attrs.mdStartIndex ?
@@ -889,6 +887,11 @@ VirtualRepeatController.prototype.updateIndexes_ = function() {
       delete this.container.cachedBlockSizes[this.newStartIndex];
       sizeTransform = this.container.getCalculatedCachedSizes();
       this.container.adjustOffset_();
+      var newScrollSize = this.container.getCalculatedCachedSizes();
+      for (var block in this.blocks) {
+        newScrollSize += this.blocks[block].element[0][this.offsetSizeString_()];
+      }
+      this.container.setScrollSize(newScrollSize);
     }
   } else {
     var block = this.getBlock_(this.newStartIndex);
@@ -907,7 +910,10 @@ VirtualRepeatController.prototype.updateIndexes_ = function() {
     }
     //Check to see if a block has gone beneath the boundaries
     else if (this.blocks[index].element[0][this.offsetLocString_()] + sizeTransform - _scrollOffset > containerLength) {
+      delete this.container.cachedBlockSizes[index];
+      this.poolBlock_(index);
       this.newEndIndex--;
+      this.container.adjustOffset_();
     }
   }, this);
 
@@ -920,13 +926,18 @@ VirtualRepeatController.prototype.updateIndexes_ = function() {
     }
     var blockBottomRight = this.blocks[this.newEndIndex].element[0][this.offsetLocString_()] + this.blocks[this.newEndIndex].element[0][this.offsetSizeString_()];
     var transforms = sizeTransform - _scrollOffset;
-    if (blockBottomRight + transforms < containerLength) {
+    if (blockBottomRight + transforms < containerLength * CONTENT_BUFFER) {
       this.newEndIndex++;
       var block = this.getBlock_(this.newEndIndex);
       this.updateBlock_(block, this.newEndIndex);
       this.parentNode.insertBefore(
           this.domFragmentFromBlocks_([block]),
           null);
+      var newScrollSize = this.container.getCalculatedCachedSizes();
+      for (var block in this.blocks) {
+        newScrollSize += this.blocks[block].element[0][this.offsetSizeString_()];
+      }
+      this.container.setScrollSize(newScrollSize);
     } else {
       this.newEndIndex++;
       break;
